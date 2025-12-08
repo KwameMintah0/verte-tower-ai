@@ -7,26 +7,53 @@ import faiss
 import numpy as np
 from PIL import Image
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="Verte Tower AI", page_icon="🌿", layout="wide")
-st.title("🌿 Verte Tower AI")
+# --- 1. PAGE CONFIGURATION (The "App" Look) ---
+st.set_page_config(
+    page_title="Verte Tower OS",
+    page_icon="🌱",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- SIDEBAR ---
+# Custom CSS to hide standard Streamlit clutter
+st.markdown("""
+    <style>
+    .stDeployButton {display:none;}
+    footer {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. HEADER / BRANDING ---
+# You can replace this URL with a photo of your actual Verte Tower later
+st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", height=150, use_container_width=True)
+st.title("🌱 Verte Tower Control Center")
+st.markdown("### AI Agronomist & Diagnostic System")
+
+# --- 3. SIDEBAR SETUP ---
 with st.sidebar:
-    st.header("1. Configuration")
+    st.header("⚙️ System Control")
+    
+    # API Key Logic
     if "GOOGLE_API_KEY" in st.secrets:
-        st.success("✅ API Key loaded securely")
+        st.success("✅ System Online (Key Loaded)")
         api_key = st.secrets["GOOGLE_API_KEY"]
     else:
-        api_key = st.text_input("Google API Key", type="password")
+        api_key = st.text_input("🔑 Enter Google API Key", type="password")
+        if not api_key:
+            st.warning("⚠️ System Offline. Key required.")
 
-    st.header("2. Knowledge Base")
-    uploaded_files = st.file_uploader("Upload Manuals (PDF)", accept_multiple_files=True, type=['pdf'])
-    train_btn = st.button("Train AI on Manuals")
+    st.markdown("---")
+    st.header("📚 Knowledge Link")
+    uploaded_files = st.file_uploader("Upload Manuals", accept_multiple_files=True, type=['pdf'])
     
-    st.info("💡 **New:** Go to the 'Plant Doctor' tab to diagnose sick plants with photos.")
+    if st.button("🔄 Sync/Train AI", type="primary"):
+        st.session_state.train_trigger = True
+    
+    st.markdown("---")
+    st.info("ℹ️ **Verte Tower Specs:**\n- HPA System\n- Solar Powered\n- 50L Reservoir")
 
-# --- FUNCTIONS ---
+# --- 4. BACKEND FUNCTIONS ---
 def get_pdf_data(files):
     chunks = []
     metadatas = []
@@ -41,24 +68,26 @@ def get_pdf_data(files):
                 metadatas.append({"source": pdf.name, "page": i + 1})
     return chunks, metadatas
 
-# --- SESSION STATE ---
+# --- 5. SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hello! I can help you with text questions or visual diagnosis. Choose a tab above!"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Welcome to the Verte Tower OS. All systems nominal. How can I assist?"}]
 if "vector_index" not in st.session_state:
     st.session_state.vector_index = None
 if "text_chunks" not in st.session_state:
     st.session_state.text_chunks = []
 if "chunk_metadatas" not in st.session_state:
     st.session_state.chunk_metadatas = []
+if "train_trigger" not in st.session_state:
+    st.session_state.train_trigger = False
 
-# --- MAIN LOGIC ---
+# --- 6. MAIN APP LOGIC ---
 if api_key:
     genai.configure(api_key=api_key)
     
-    # SETUP TABS
-    tab1, tab2 = st.tabs(["💬 Chat & Manuals", "📸 Plant Doctor (Vision)"])
+    # NAVIGATION TABS
+    tab1, tab2 = st.tabs(["💬 Operations Chat", "🔬 Plant Pathology Lab"])
 
-    # --- TAB 1: TEXT CHAT (Uses gemini-pro) ---
+    # --- TAB 1: CHAT INTERFACE ---
     with tab1:
         @st.cache_resource
         def load_embedding_model():
@@ -67,11 +96,11 @@ if api_key:
         try:
             embed_model = load_embedding_model()
         except Exception as e:
-            st.error(f"Error loading model: {e}")
+            st.error(f"Error loading core systems: {e}")
 
-        # Training
-        if uploaded_files and train_btn:
-            with st.spinner("Analyzing Manuals & Indexing..."):
+        # Training Trigger
+        if uploaded_files and st.session_state.train_trigger:
+            with st.spinner("🔄 Integrating new data into Neural Network..."):
                 try:
                     chunks, metadatas = get_pdf_data(uploaded_files)
                     st.session_state.text_chunks = chunks
@@ -81,24 +110,27 @@ if api_key:
                     index = faiss.IndexFlatL2(dimension)
                     index.add(np.array(embeddings))
                     st.session_state.vector_index = index
-                    st.success(f"✅ Indexed {len(chunks)} sections.")
+                    st.session_state.train_trigger = False # Reset trigger
+                    st.toast("✅ Knowledge Base Updated Successfully!", icon="💾")
                 except Exception as e:
                     st.error(f"Training Failed: {e}")
 
-        # Chat History
+        # Chat Display
         for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
+            # Custom Avatars
+            avatar = "🧑‍🌾" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
                 st.write(msg["content"])
                 if "sources" in msg:
-                    with st.expander("📚 View Sources"):
+                    with st.expander("🔍 Verified Sources"):
                         for src in msg["sources"]:
-                            st.caption(f"**File:** {src['source']} | **Page:** {src['page']}")
+                            st.caption(f"📄 **{src['source']}** (Page {src['page']})")
                             st.text(src['text'][:150] + "...")
 
         # Chat Input
-        if prompt := st.chat_input("Ask about nutrients, pressure, or solar..."):
+        if prompt := st.chat_input("Enter command or question..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
-            st.chat_message("user").write(prompt)
+            st.chat_message("user", avatar="🧑‍🌾").write(prompt)
 
             if st.session_state.vector_index is not None:
                 try:
@@ -115,59 +147,61 @@ if api_key:
                             relevant_text += f"\n--- Source: {metadata['source']} (Page {metadata['page']}) ---\n{chunk_text}\n"
                             sources.append({"source": metadata['source'], "page": metadata['page'], "text": chunk_text})
 
-                    # --- CHANGE 1: Use 'gemini-pro' for text ---
+                    # AI Model Logic (Gemini Pro)
                     model = genai.GenerativeModel('gemini-pro')
-                    full_prompt = f"""You are the Agronomist for the 'Verte Tower'.
-                    CONTEXT: U-shaped vertical aeroponic tower (HPA), Solar Powered.
-                    MANUAL INFO: {relevant_text}
-                    QUESTION: {prompt}"""
+                    full_prompt = f"""Role: Chief Systems Agronomist for 'Verte Tower'.
+                    System: High-Pressure Aeroponics (HPA), Solar, U-Shaped Vertical Tower.
+                    Data: {relevant_text}
+                    User Query: {prompt}"""
                     
                     response = model.generate_content(full_prompt)
                     
-                    with st.chat_message("assistant"):
+                    with st.chat_message("assistant", avatar="🤖"):
                         st.write(response.text)
-                        with st.expander("📚 View Sources"):
+                        with st.expander("🔍 Verified Sources"):
                             for src in sources:
-                                st.caption(f"**File:** {src['source']} | **Page:** {src['page']}")
+                                st.caption(f"📄 **{src['source']}** (Page {src['page']})")
                                 st.text(src['text'][:150] + "...")
                     
                     st.session_state.messages.append({"role": "assistant", "content": response.text, "sources": sources})
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"System Error: {e}")
             else:
-                st.error("⚠️ Please upload manuals and click 'Train' first.")
+                st.warning("⚠️ Knowledge Base Empty. Please upload manuals and click 'Sync/Train'.")
 
-    # --- TAB 2: PLANT DOCTOR (Uses gemini-pro-vision) ---
+    # --- TAB 2: VISUAL DIAGNOSTICS (Split Layout) ---
     with tab2:
-        st.header("📸 AI Plant Diagnosis")
-        st.write("Upload a photo of your sick plant (leaves or roots). The AI will identify the issue.")
+        st.subheader("📸 Visual Symptom Analysis")
         
-        img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+        col1, col2 = st.columns([1, 2]) # Split screen: 1/3 Image, 2/3 Results
         
-        if img_file:
-            image = Image.open(img_file)
-            st.image(image, caption="Uploaded Plant Photo", width=300)
+        with col1:
+            img_file = st.file_uploader("Upload Plant Photo", type=["jpg", "png", "jpeg"])
+            if img_file:
+                image = Image.open(img_file)
+                st.image(image, caption="Specimen", use_container_width=True)
+                analyze_btn = st.button("🔬 Run Analysis", type="primary")
             
-            analyze_btn = st.button("Diagnose Issue")
-            
-            if analyze_btn:
-                with st.spinner("Analyzing leaf patterns and discoloration..."):
+        with col2:
+            if img_file and analyze_btn:
+                with st.spinner("🔬 Analyzing leaf tissue patterns..."):
                     try:
-                        # --- CHANGE 2: Use 'gemini-pro-vision' for images ---
+                        # AI Vision Logic (Gemini Pro Vision)
                         vision_model = genai.GenerativeModel('gemini-pro-vision')
-                        
                         vision_prompt = """
-                        Act as an expert Plant Pathologist. Analyze this image carefully.
-                        1. Identify the crop if possible.
-                        2. Describe the visual symptoms (e.g., interveinal chlorosis, tip burn).
-                        3. Diagnose the likely cause (Nutrient deficiency, Pest, or Disease).
-                        4. Recommend an organic treatment suitable for Aeroponics.
+                        Analyze this plant image for the Verte Tower Aeroponic system.
+                        1. ID Crop.
+                        2. Detect Symptoms (Chlorosis, Necrosis, Wilting).
+                        3. Diagnose Issue (Deficiency, Pest, Pathogen).
+                        4. Rx: Provide organic treatment.
                         """
-                        
                         response = vision_model.generate_content([vision_prompt, image])
                         
-                        st.success("Diagnosis Complete")
+                        st.success("Analysis Complete")
                         st.markdown(response.text)
-                        
                     except Exception as e:
-                        st.error(f"Vision Analysis Failed: {e}")
+                        st.error(f"Analysis Failed: {e}")
+            elif not img_file:
+                st.info("👈 Upload an image to begin analysis.")
+            else:
+                st.info("👆 Click 'Run Analysis' to process the image.")

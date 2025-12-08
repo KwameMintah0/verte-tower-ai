@@ -1,11 +1,4 @@
-# Install the stable basics (No LangChain)
-!pip install -q streamlit google-generativeai faiss-cpu sentence-transformers pypdf
 
-# Install the tunnel tool (Cloudflare)
-!wget -q -O cloudflared-linux-amd64 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-!chmod +x cloudflared-linux-amd64
-
-%%writefile app.py
 import streamlit as st
 import os
 import google.generativeai as genai
@@ -187,4 +180,5 @@ with open('tunnel.log', 'w') as f:
 time.sleep(10)
 
 # Get Link
+
 !grep -o 'https://.*\.trycloudflare.com' tunnel.log | head -n 1 | xargs echo "CLICK THIS LINK -->"

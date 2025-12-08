@@ -26,7 +26,7 @@ st.markdown("""
 
 # --- 2. HEADER / BRANDING ---
 # You can replace this URL with a photo of your actual Verte Tower later
-st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", height=150, use_column_width=True)
+st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", use_column_width=True)
 st.title("🌱 Verte Tower Control Center")
 st.markdown("### AI Agronomist & Diagnostic System")
 
@@ -205,4 +205,5 @@ if api_key:
                 st.info("👈 Upload an image to begin analysis.")
             else:
                 st.info("👆 Click 'Run Analysis' to process the image.")
+
 

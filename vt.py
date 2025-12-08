@@ -165,20 +165,5 @@ if api_key:
             
         else:
             st.error("⚠️ System not trained. Please upload manuals and click 'Train AI on Manuals' in the sidebar.")
+            
 
-import subprocess
-import time
-
-# Run Streamlit
-subprocess.Popen(["streamlit", "run", "app.py"])
-
-# Start Tunnel
-print("Starting Tunnel... please wait 10 seconds...")
-with open('tunnel.log', 'w') as f:
-    subprocess.Popen(["./cloudflared-linux-amd64", "tunnel", "--url", "http://localhost:8501"], stdout=f, stderr=f)
-
-time.sleep(10)
-
-# Get Link
-
-!grep -o 'https://.*\.trycloudflare.com' tunnel.log | head -n 1 | xargs echo "CLICK THIS LINK -->"

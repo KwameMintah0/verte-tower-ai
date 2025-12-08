@@ -7,39 +7,36 @@ import faiss
 import numpy as np
 from PIL import Image
 
-# --- 1. PAGE CONFIGURATION ---
-st.set_page_config(
-    page_title="Verte Tower OS",
-    page_icon="🌱",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Verte Tower OS", page_icon="🌱", layout="wide")
 
-# --- 2. HEADER ---
-# Using the safe image width command
+# --- DEBUG: CHECK SYSTEM HEALTH ---
+try:
+    version = genai.__version__
+except:
+    version = "Unknown (Too Old)"
+
+# --- HEADER ---
 st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", use_column_width=True)
-st.title("🌱 Verte Tower AI Chatbox")
+st.title("🌱 Verte Tower Control Center")
 
-# --- 3. SIDEBAR ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ System Control")
+    st.header("⚙️ System Status")
+    st.code(f"AI Lib Version: {version}") # <--- THIS TELLS US IF IT WORKED
     
     if "GOOGLE_API_KEY" in st.secrets:
-        st.success("✅ System Online")
+        st.success("✅ Key Loaded")
         api_key = st.secrets["GOOGLE_API_KEY"]
     else:
-        api_key = st.text_input("🔑 Enter Google API Key", type="password")
+        api_key = st.text_input("🔑 API Key", type="password")
 
-    st.markdown("---")
-    st.header("📚 Knowledge Link")
+    st.header("📚 Knowledge Base")
     uploaded_files = st.file_uploader("Upload Manuals", accept_multiple_files=True, type=['pdf'])
-    
-    if st.button("🔄 Sync/Train AI", type="primary"):
+    if st.button("🔄 Train AI"):
         st.session_state.train_trigger = True
-    
-    st.info("ℹ️ **System Specs:**\n- Model: Gemini 1.5 Flash\n- HPA Aeroponics\n- Solar Config")
 
-# --- 4. BACKEND FUNCTIONS ---
+# --- FUNCTIONS ---
 def get_pdf_data(files):
     chunks = []
     metadatas = []
@@ -54,9 +51,9 @@ def get_pdf_data(files):
                 metadatas.append({"source": pdf.name, "page": i + 1})
     return chunks, metadatas
 
-# --- 5. SESSION STATE ---
+# --- SESSION STATE ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "How can I help!."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Verte Tower System Online."}]
 if "vector_index" not in st.session_state:
     st.session_state.vector_index = None
 if "text_chunks" not in st.session_state:
@@ -66,111 +63,67 @@ if "chunk_metadatas" not in st.session_state:
 if "train_trigger" not in st.session_state:
     st.session_state.train_trigger = False
 
-# --- 6. MAIN APP LOGIC ---
+# --- MAIN LOGIC ---
 if api_key:
     genai.configure(api_key=api_key)
     
-    tab1, tab2 = st.tabs(["💬 Chat", "🔬 Plant Lab"])
+    tab1, tab2 = st.tabs(["💬 Chat", "📸 Vision"])
 
-    # --- TAB 1: CHAT ---
     with tab1:
         @st.cache_resource
         def load_embedding_model():
             return SentenceTransformer('all-MiniLM-L6-v2')
-        
-        try:
-            embed_model = load_embedding_model()
-        except Exception as e:
-            st.error(f"Embedding Model Error: {e}")
+        embed_model = load_embedding_model()
 
         if uploaded_files and st.session_state.train_trigger:
-            with st.spinner("🔄 Indexing Manuals..."):
-                try:
-                    chunks, metadatas = get_pdf_data(uploaded_files)
-                    st.session_state.text_chunks = chunks
-                    st.session_state.chunk_metadatas = metadatas
-                    embeddings = embed_model.encode(chunks)
-                    dimension = embeddings.shape[1]
-                    index = faiss.IndexFlatL2(dimension)
-                    index.add(np.array(embeddings))
-                    st.session_state.vector_index = index
-                    st.session_state.train_trigger = False
-                    st.toast("✅ Knowledge Base Updated!", icon="💾")
-                except Exception as e:
-                    st.error(f"Training Failed: {e}")
+            with st.spinner("Indexing..."):
+                chunks, metadatas = get_pdf_data(uploaded_files)
+                st.session_state.text_chunks = chunks
+                st.session_state.chunk_metadatas = metadatas
+                embeddings = embed_model.encode(chunks)
+                dimension = embeddings.shape[1]
+                index = faiss.IndexFlatL2(dimension)
+                index.add(np.array(embeddings))
+                st.session_state.vector_index = index
+                st.session_state.train_trigger = False
+                st.success("Updated!")
 
         for msg in st.session_state.messages:
-            avatar = "🧑‍🌾" if msg["role"] == "user" else "🤖"
-            with st.chat_message(msg["role"], avatar=avatar):
-                st.write(msg["content"])
-                if "sources" in msg:
-                    with st.expander("🔍 Verified Sources"):
-                        for src in msg["sources"]:
-                            st.caption(f"📄 **{src['source']}** (Page {src['page']})")
-                            st.text(src['text'][:150] + "...")
+            st.chat_message(msg["role"]).write(msg["content"])
 
-        if prompt := st.chat_input("Enter command..."):
+        if prompt := st.chat_input("Query..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
-            st.chat_message("user", avatar="🧑‍🌾").write(prompt)
+            st.chat_message("user").write(prompt)
 
-            if st.session_state.vector_index is not None:
+            if st.session_state.vector_index:
+                query_embedding = embed_model.encode([prompt])
+                D, I = st.session_state.vector_index.search(np.array(query_embedding), k=3)
+                relevant_text = ""
+                for idx in I[0]:
+                    if idx < len(st.session_state.text_chunks):
+                        relevant_text += st.session_state.text_chunks[idx] + "\n"
+
+                # --- MODEL SELECTION ---
+                # We use the standard model first to ensure stability
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                full_prompt = f"Context: {relevant_text} \n Question: {prompt}"
                 try:
-                    query_embedding = embed_model.encode([prompt])
-                    D, I = st.session_state.vector_index.search(np.array(query_embedding), k=3)
-                    indices = I[0]
-                    relevant_text = ""
-                    sources = []
-                    
-                    for idx in indices:
-                        if idx < len(st.session_state.text_chunks):
-                            chunk_text = st.session_state.text_chunks[idx]
-                            metadata = st.session_state.chunk_metadatas[idx]
-                            relevant_text += f"\n--- Source: {metadata['source']} (Page {metadata['page']}) ---\n{chunk_text}\n"
-                            sources.append({"source": metadata['source'], "page": metadata['page'], "text": chunk_text})
-
-                    # --- KEY CHANGE: USING GEMINI 1.5 FLASH ---
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    full_prompt = f"""Role: Chief Agronomist.
-                    Context: Verte Tower (HPA Aeroponics).
-                    Data: {relevant_text}
-                    Query: {prompt}"""
-                    
                     response = model.generate_content(full_prompt)
-                    
-                    with st.chat_message("assistant", avatar="🤖"):
-                        st.write(response.text)
-                        with st.expander("🔍 Verified Sources"):
-                            for src in sources:
-                                st.caption(f"📄 **{src['source']}** (Page {src['page']})")
-                    
-                    st.session_state.messages.append({"role": "assistant", "content": response.text, "sources": sources})
+                    st.chat_message("assistant").write(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
                 except Exception as e:
                     st.error(f"Error: {e}")
             else:
-                st.warning("⚠️ Please upload manuals and click 'Sync/Train'.")
+                st.warning("Upload manuals and train first.")
 
-    # --- TAB 2: VISION ---
     with tab2:
-        st.subheader("📸 Visual Diagnosis")
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            img_file = st.file_uploader("Upload Plant Photo", type=["jpg", "png", "jpeg"])
-            if img_file:
-                image = Image.open(img_file)
-                st.image(image, caption="Specimen", use_column_width=True)
-                analyze_btn = st.button("🔬 Run Analysis", type="primary")
-            
-        with col2:
-            if img_file and analyze_btn:
-                with st.spinner("🔬 Analyzing tissue..."):
-                    try:
-                        # --- KEY CHANGE: USING GEMINI 1.5 FLASH (It handles images too!) ---
-                        vision_model = genai.GenerativeModel('gemini-1.5-flash')
-                        vision_prompt = "Analyze this aeroponic plant. Identify crop, symptoms, and treatment."
-                        response = vision_model.generate_content([vision_prompt, image])
-                        
-                        st.success("Analysis Complete")
-                        st.markdown(response.text)
-                    except Exception as e:
-                        st.error(f"Analysis Failed: {e}")
+        img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+        if img_file and st.button("Analyze"):
+            image = Image.open(img_file)
+            st.image(image, use_column_width=True)
+            try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(["Diagnose this plant.", image])
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Vision Error: {e}")

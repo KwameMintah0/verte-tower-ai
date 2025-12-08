@@ -10,26 +10,31 @@ from PIL import Image
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Verte Tower OS", page_icon="🌱", layout="wide")
 
-# --- DEBUG: CHECK SYSTEM HEALTH ---
-try:
-    version = genai.__version__
-except:
-    version = "Unknown (Too Old)"
-
 # --- HEADER ---
 st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", use_column_width=True)
-st.title("🌱 Verte Tower Control Center")
+st.title("🌱 Verte Tower Control Center (Safe Mode)")
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ System Status")
-    st.code(f"AI Lib Version: {version}") # <--- THIS TELLS US IF IT WORKED
     
     if "GOOGLE_API_KEY" in st.secrets:
         st.success("✅ Key Loaded")
         api_key = st.secrets["GOOGLE_API_KEY"]
     else:
         api_key = st.text_input("🔑 API Key", type="password")
+
+    # --- DIAGNOSTIC TOOL: LIST AVAILABLE MODELS ---
+    if api_key:
+        genai.configure(api_key=api_key)
+        with st.expander("🛠️ View Available Models"):
+            try:
+                # This lists what your server can ACTUALLY see
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        st.code(m.name)
+            except Exception as e:
+                st.error(f"List Error: {e}")
 
     st.header("📚 Knowledge Base")
     uploaded_files = st.file_uploader("Upload Manuals", accept_multiple_files=True, type=['pdf'])
@@ -53,7 +58,7 @@ def get_pdf_data(files):
 
 # --- SESSION STATE ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Verte Tower System Online."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Safe Mode Online. Ready."}]
 if "vector_index" not in st.session_state:
     st.session_state.vector_index = None
 if "text_chunks" not in st.session_state:
@@ -69,6 +74,7 @@ if api_key:
     
     tab1, tab2 = st.tabs(["💬 Chat", "📸 Vision"])
 
+    # --- TAB 1: CHAT (Uses gemini-pro) ---
     with tab1:
         @st.cache_resource
         def load_embedding_model():
@@ -103,9 +109,8 @@ if api_key:
                     if idx < len(st.session_state.text_chunks):
                         relevant_text += st.session_state.text_chunks[idx] + "\n"
 
-                # --- MODEL SELECTION ---
-                # We use the standard model first to ensure stability
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # --- USE OLDER STABLE MODEL ---
+                model = genai.GenerativeModel('gemini-pro')
                 full_prompt = f"Context: {relevant_text} \n Question: {prompt}"
                 try:
                     response = model.generate_content(full_prompt)
@@ -116,13 +121,15 @@ if api_key:
             else:
                 st.warning("Upload manuals and train first.")
 
+    # --- TAB 2: VISION (Uses gemini-pro-vision) ---
     with tab2:
         img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
         if img_file and st.button("Analyze"):
             image = Image.open(img_file)
             st.image(image, use_column_width=True)
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # --- USE OLDER STABLE VISION MODEL ---
+                model = genai.GenerativeModel('gemini-pro-vision')
                 response = model.generate_content(["Diagnose this plant.", image])
                 st.write(response.text)
             except Exception as e:

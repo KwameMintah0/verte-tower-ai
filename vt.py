@@ -11,8 +11,20 @@ from PIL import Image
 st.set_page_config(page_title="Verte Tower OS", page_icon="🌱", layout="wide")
 
 # --- HEADER ---
-st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&auto=format&fit=crop", use_column_width=True)
-st.title("🌱 Verte Tower Control Center (Updated Mode)")
+st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&h=500&auto=format&fit=crop", use_column_width=True)
+st.title("🌱 Verte Tower")
+
+# --- SESSION STATE INITIALIZATION (Moved up for the clear button) ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "System Online. Ready for queries."}]
+if "vector_index" not in st.session_state:
+    st.session_state.vector_index = None
+if "text_chunks" not in st.session_state:
+    st.session_state.text_chunks = []
+if "chunk_metadatas" not in st.session_state:
+    st.session_state.chunk_metadatas = []
+if "train_trigger" not in st.session_state:
+    st.session_state.train_trigger = False
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -136,3 +148,4 @@ if api_key:
                 st.write(response.text)
             except Exception as e:
                 st.error(f"Vision Error: {e}")
+

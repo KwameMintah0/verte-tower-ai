@@ -82,6 +82,7 @@ if api_key:
     
     tab1, tab2 = st.tabs(["💬 Chat", "📸 Vision"])
 
+    # === TAB 1: CHAT ===
     with tab1:
         @st.cache_resource
         def load_embedding_model():
@@ -116,39 +117,29 @@ if api_key:
                 st.session_state.train_trigger = False
                 st.success("Brain Updated!")
 
-        # --- 1. DISPLAY CHAT HISTORY (Above input) ---
-        # We create a container so messages always stay on top
+        # --- DISPLAY CHAT HISTORY (Above input) ---
         chat_container = st.container()
         with chat_container:
             for msg in st.session_state.messages:
                 st.chat_message(msg["role"]).write(msg["content"])
 
-        # --- 2. INPUT AREA (Below history) ---
+        # --- INPUT AREA (Below history) ---
         prompt = None
         
-        # A. Quick Action Chips
-        col1, col2, col3, col4 = st.columns(4)
-        if col1.button("💧 Check pH"): prompt = "What is the ideal pH range for aeroponics?"
-        if col2.button("🥬 Lettuce Recipe"): prompt = "Give me a nutrient recipe for lettuce."
-        if col3.button("🐛 Pest Control"): prompt = "How do I fight aphids organically?"
-        if col4.button("🔧 Pump Issues"): prompt = "My pump is making noise, what do I do?"
-
-        # B. Audio Input
+        # A. Audio Input
         audio_value = st.audio_input("🎤 Record Voice Note")
         if audio_value:
-            # Transcribe audio using Gemini
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(["Transcribe this audio exactly.", audio_value])
-            prompt = response.text
+            prompt = response.text 
 
-        # C. Text Input (Standard Chat Box)
-        # We use a placeholder so we can override it if a button was clicked
+        # B. Text Input
         if not prompt:
             prompt = st.chat_input("Ask Verte Tower...")
 
-        # --- 3. PROCESSING LOGIC ---
+        # --- PROCESSING LOGIC ---
         if prompt:
-            # Display user message immediately
+            # Display user message
             with chat_container:
                 st.chat_message("user").write(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
@@ -180,7 +171,6 @@ if api_key:
                 try:
                     with chat_container:
                         with st.chat_message("assistant"):
-                            # Enable Streaming
                             stream = model.generate_content(full_prompt, stream=True)
                             response_text = st.write_stream(stream)
                             
@@ -188,14 +178,16 @@ if api_key:
                 except Exception as e:
                     st.error(f"Error: {e}")
 
+    # === TAB 2: VISION ===
     with tab2:
         img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
         if img_file and st.button("Analyze"):
             image = Image.open(img_file)
             st.image(image, use_column_width=True)
-            try:
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                response = model.generate_content(["Diagnose this plant based on visual cues.", image])
-                st.write(response.text)
-            except Exception as e:
-                st.error(f"Vision Error: {e}")
+            with st.spinner("Analyzing plant health..."):
+                try:
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    response = model.generate_content(["Diagnose this plant based on visual cues. Keep it concise.", image])
+                    st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"Vision Error: {e}")

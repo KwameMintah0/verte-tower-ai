@@ -9,15 +9,15 @@ from PIL import Image
 import pickle
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Verte Tower", page_icon="🌱", layout="wide")
+st.set_page_config(page_title="Verte Tower OS", page_icon="🌱", layout="wide")
 
 # --- HEADER ---
 st.image("https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?q=80&w=2070&h=500&auto=format&fit=crop", use_column_width=True)
-st.title("🌱 Verte Tower Help Center")
+st.title("🌱 Verte Tower Control Center")
 
 # --- SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hello! How can we help?."}]
+    st.session_state.messages = [{"role": "assistant", "content": "System Online. I am listening."}]
 if "vector_index" not in st.session_state:
     st.session_state.vector_index = None
 if "text_chunks" not in st.session_state:
@@ -28,8 +28,6 @@ if "train_trigger" not in st.session_state:
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configuration")
-    
-    # API Key
     if "GOOGLE_API_KEY" in st.secrets:
         st.success("✅ Key Loaded (Secret)")
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -38,7 +36,6 @@ with st.sidebar:
 
     st.divider()
     
-    # --- UPDATED: CHAT MODE SWITCH ---
     st.subheader("🤖 AI Personality")
     chat_mode = st.radio(
         "Source of Truth:",
@@ -47,16 +44,12 @@ with st.sidebar:
     )
 
     st.divider()
-    
-    # Clear Chat
     if st.button("🗑️ Clear Chat History", type="primary"):
         st.session_state.messages = [{"role": "assistant", "content": "Chat cleared."}]
         st.rerun()
 
-    # Knowledge Base (Only show if in Manual Mode or for maintenance)
     with st.expander("📚 Knowledge Base Management", expanded=(chat_mode == "📚 Verte Manuals (PDF)")):
         index_exists = os.path.exists("verte_index.faiss") and os.path.exists("verte_chunks.pkl")
-        
         if st.session_state.vector_index is not None:
             st.success("Brain: ACTIVE")
         elif index_exists:
@@ -66,7 +59,6 @@ with st.sidebar:
                 st.rerun()
         else:
             st.warning("Brain: EMPTY")
-
         uploaded_files = st.file_uploader("Upload Manuals", accept_multiple_files=True, type=['pdf'])
         if st.button("🔄 Train & Save"):
             st.session_state.train_trigger = True
@@ -96,7 +88,7 @@ if api_key:
             return SentenceTransformer('all-MiniLM-L6-v2')
         embed_model = load_embedding_model()
 
-        # Load Logic
+        # Load/Train Logic
         if "load_trigger" in st.session_state and st.session_state.load_trigger:
             try:
                 index = faiss.read_index("verte_index.faiss")
@@ -109,7 +101,6 @@ if api_key:
             except Exception as e:
                 st.error(f"Load Error: {e}")
 
-        # Train Logic
         if uploaded_files and st.session_state.train_trigger:
             with st.spinner("Indexing..."):
                 chunks = get_pdf_data(uploaded_files)
@@ -125,18 +116,47 @@ if api_key:
                 st.session_state.train_trigger = False
                 st.success("Brain Updated!")
 
-        # Chat Interface
-        for msg in st.session_state.messages:
-            st.chat_message(msg["role"]).write(msg["content"])
+        # --- 1. DISPLAY CHAT HISTORY (Above input) ---
+        # We create a container so messages always stay on top
+        chat_container = st.container()
+        with chat_container:
+            for msg in st.session_state.messages:
+                st.chat_message(msg["role"]).write(msg["content"])
 
-        if prompt := st.chat_input("Ask about crops, nutrients, or your manual..."):
+        # --- 2. INPUT AREA (Below history) ---
+        prompt = None
+        
+        # A. Quick Action Chips
+        col1, col2, col3, col4 = st.columns(4)
+        if col1.button("💧 Check pH"): prompt = "What is the ideal pH range for aeroponics?"
+        if col2.button("🥬 Lettuce Recipe"): prompt = "Give me a nutrient recipe for lettuce."
+        if col3.button("🐛 Pest Control"): prompt = "How do I fight aphids organically?"
+        if col4.button("🔧 Pump Issues"): prompt = "My pump is making noise, what do I do?"
+
+        # B. Audio Input
+        audio_value = st.audio_input("🎤 Record Voice Note")
+        if audio_value:
+            # Transcribe audio using Gemini
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            response = model.generate_content(["Transcribe this audio exactly.", audio_value])
+            prompt = response.text
+
+        # C. Text Input (Standard Chat Box)
+        # We use a placeholder so we can override it if a button was clicked
+        if not prompt:
+            prompt = st.chat_input("Ask Verte Tower...")
+
+        # --- 3. PROCESSING LOGIC ---
+        if prompt:
+            # Display user message immediately
+            with chat_container:
+                st.chat_message("user").write(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
-            st.chat_message("user").write(prompt)
 
-            # --- DUAL MODE LOGIC ---
+            # Setup Model
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # MODE 1: PDF RESTRICTED (Your Manuals)
+            # Context Logic
             if chat_mode == "📚 Verte Manuals (PDF)":
                 if st.session_state.vector_index:
                     query_embedding = embed_model.encode([prompt])
@@ -145,28 +165,26 @@ if api_key:
                     for idx in I[0]:
                         if idx < len(st.session_state.text_chunks):
                             relevant_text += st.session_state.text_chunks[idx] + "\n"
-                    
                     full_prompt = f"You are a technical assistant. Use ONLY the Context below. \nContext: {relevant_text} \nQuestion: {prompt}"
                 else:
                     full_prompt = None
                     st.warning("⚠️ Manual Mode: Please load knowledge base first.")
-            
-            # MODE 2: GENERAL AGRICULTURE (The Change)
             else:
-                # UPDATED PROMPT: Enforces agriculture domain
                 full_prompt = (
                     f"You are Verte AI, a specialized agricultural consultant. "
-                    f"You are an expert in aeroponics, hydroponics, soil science, pest control, and general botany. "
-                    f"If the question is unrelated to agriculture, politely steer it back to plants. "
-                    f"Question: {prompt}"
+                    f"Answer this clearly and concisely. Question: {prompt}"
                 )
 
-            # GENERATE RESPONSE
+            # Generate & Stream Response
             if full_prompt:
                 try:
-                    response = model.generate_content(full_prompt)
-                    st.chat_message("assistant").write(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    with chat_container:
+                        with st.chat_message("assistant"):
+                            # Enable Streaming
+                            stream = model.generate_content(full_prompt, stream=True)
+                            response_text = st.write_stream(stream)
+                            
+                    st.session_state.messages.append({"role": "assistant", "content": response_text})
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -181,4 +199,3 @@ if api_key:
                 st.write(response.text)
             except Exception as e:
                 st.error(f"Vision Error: {e}")
-

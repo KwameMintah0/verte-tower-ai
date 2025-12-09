@@ -17,7 +17,7 @@ st.title("🌱 Verte Tower Control Center")
 
 # --- SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "System Online. Ready for text or images."}]
+    st.session_state.messages = [{"role": "assistant", "content": "System Online. Ready for text, voice, or images."}]
 if "vector_index" not in st.session_state:
     st.session_state.vector_index = None
 if "text_chunks" not in st.session_state:
@@ -36,11 +36,11 @@ with st.sidebar:
 
     st.divider()
     
-    # --- NEW: IMAGE UPLOADER IN SIDEBAR (Acts as Attachment) ---
+    # --- IMAGE UPLOADER (Attachments) ---
     st.subheader("📎 Attachments")
-    uploaded_img = st.file_uploader("Attach Image to Chat", type=["jpg", "png", "jpeg"], key="chat_image_upload")
+    uploaded_img = st.file_uploader("Attach Image", type=["jpg", "png", "jpeg"], key="chat_image_upload")
     if uploaded_img:
-        st.info("✅ Image attached! Type your question below.")
+        st.info("✅ Image attached! Type or speak below.")
 
     st.divider()
     
@@ -121,98 +121,98 @@ if api_key:
             st.session_state.train_trigger = False
             st.success("Brain Updated!")
 
-    # --- DISPLAY CHAT HISTORY ---
+    # --- CHAT HISTORY CONTAINER ---
+    # We use a container to keep messages distinct from the input area
     chat_container = st.container()
     with chat_container:
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
-                # If the message has an image, show it first
                 if "image" in msg and msg["image"]:
                     st.image(msg["image"], width=300)
-                # Show the text
                 st.write(msg["content"])
 
-    # --- INPUT AREA ---
-    prompt = None
+    # --- UNIFIED INPUT AREA ---
+    # We place the Audio Input here so it sits right above the fixed chat bar
+    # This is the closest we can get to "Inside the box" in Streamlit
+    audio_value = st.audio_input("🎤 Voice Note (Click to record)")
     
-    # Audio Input
-    audio_value = st.audio_input("🎤 Record Voice Note")
+    # Standard Chat Input (Always pinned to bottom)
+    prompt = st.chat_input("Type your message...")
+
+    # --- INPUT PROCESSING ---
+    final_prompt = None
+    
+    # 1. Check Voice First
     if audio_value:
         model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(["Transcribe this audio exactly.", audio_value])
-        prompt = response.text 
-
-    # Text Input
-    if not prompt:
-        prompt = st.chat_input("Ask Verte Tower (or upload an image first)...")
-
-    # --- PROCESSING LOGIC ---
+        with st.spinner("Transcribing..."):
+            # We treat the transcription as the prompt
+            response = model.generate_content(["Transcribe this audio exactly.", audio_value])
+            final_prompt = response.text 
+    
+    # 2. Check Text Input (Overwrites voice if both exist in same tick, though unlikely)
     if prompt:
-        # Prepare the User Message Payload
-        user_msg = {"role": "user", "content": prompt}
+        final_prompt = prompt
+
+    # --- EXECUTE IF WE HAVE INPUT ---
+    if final_prompt:
+        # Prepare User Payload
+        user_msg = {"role": "user", "content": final_prompt}
         
-        # Check for attached image
+        # Check Image Attachment
         img_data = None
         if uploaded_img:
             img_data = Image.open(uploaded_img)
-            user_msg["image"] = img_data # Add image to history
+            user_msg["image"] = img_data
         
-        # Display User Message
+        # Update UI & History
         with chat_container:
             with st.chat_message("user"):
                 if img_data:
                     st.image(img_data, width=300)
-                st.write(prompt)
-        
+                st.write(final_prompt)
         st.session_state.messages.append(user_msg)
 
-        # --- PREPARE AI INPUT ---
+        # Build AI Context
         model = genai.GenerativeModel('gemini-2.5-flash')
         content_parts = []
         
-        # 1. Add Text Prompt
+        # Text Logic
         if chat_mode == "📚 Verte Manuals (PDF)" and not img_data:
-            # RAG Logic (Only works for text-only queries generally)
             if st.session_state.vector_index:
-                query_embedding = embed_model.encode([prompt])
+                query_embedding = embed_model.encode([final_prompt])
                 D, I = st.session_state.vector_index.search(np.array(query_embedding), k=3)
                 relevant_text = ""
                 for idx in I[0]:
                     if idx < len(st.session_state.text_chunks):
                         relevant_text += st.session_state.text_chunks[idx] + "\n"
-                full_prompt = f"You are a technical assistant. Use ONLY the Context below. \nContext: {relevant_text} \nQuestion: {prompt}"
+                full_prompt = f"You are a technical assistant. Use ONLY the Context below. \nContext: {relevant_text} \nQuestion: {final_prompt}"
                 content_parts.append(full_prompt)
             else:
                 st.warning("⚠️ Manual Mode: Please load knowledge base first.")
-                content_parts.append(prompt)
+                content_parts.append(final_prompt)
         else:
-            # General Logic (Works for Text OR Text+Image)
-            full_prompt = (
-                f"You are Verte AI, a specialized agricultural consultant. "
-                f"Answer this clearly. Question: {prompt}"
-            )
+            full_prompt = f"You are Verte AI, a specialized agricultural consultant. Answer clearly. Question: {final_prompt}"
             content_parts.append(full_prompt)
 
-        # 2. Add Image (if exists)
+        # Image Logic
         if img_data:
             content_parts.append(img_data)
 
-        # --- GENERATE RESPONSE ---
+        # Generate Response
         if content_parts:
             try:
                 with chat_container:
                     with st.chat_message("assistant"):
                         placeholder = st.empty()
                         full_response = ""
-                        
-                        # Stream the response
                         stream = model.generate_content(content_parts, stream=True)
                         
+                        # Streaming Loop
                         for chunk in stream:
                             if chunk.text:
                                 full_response += chunk.text
                                 placeholder.markdown(full_response + "▌")
-                        
                         placeholder.markdown(full_response)
                         
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
